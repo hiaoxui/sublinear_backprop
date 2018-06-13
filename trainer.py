@@ -27,12 +27,11 @@ class Trainer(object):
         bar = tqdm(total=n_iter)
         for _ in range(n_iter):
             xs, ys = self.corpus(cfg.batch_size)
+            xs = torch.tensor(xs, dtype=torch.int64)
+            ys = torch.tensor(ys, dtype=torch.int64)
             if cfg.cuda:
-                xs = Variable(torch.LongTensor(xs).cuda())
-                ys = Variable(torch.LongTensor(ys).cuda())
-            else:
-                xs = Variable(torch.LongTensor(xs))
-                ys = Variable(torch.LongTensor(ys))
+                xs = xs.cuda()
+                ys = ys.cuda()
             output = self.model(xs).view(-1, cfg.voc_size)
             ys = ys.view(-1)
             loss = criterion(output, ys)
@@ -49,10 +48,9 @@ class Trainer(object):
         t = f = 0
         for _ in range(n_iter):
             xs, ys = self.corpus(cfg.batch_size)
+            xs = torch.tensor(xs, dtype=torch.int64)
             if cfg.cuda:
-                xs = Variable(torch.LongTensor(xs).cuda())
-            else:
-                xs = Variable(torch.LongTensor(xs))
+                xs = xs.cuda()
             output = self.model(xs).view(-1, cfg.voc_size).data.cpu().numpy()
             pred = np.argmax(output, axis=1)
             ys = ys.reshape(-1)

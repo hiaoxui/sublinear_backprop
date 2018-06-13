@@ -29,7 +29,8 @@ class OriginalLSTM(nn.Module):
         :return:
         """
         code = self.encoder(x)
-        lstm_out = self.rnn(code)[0]
+        lstm_out = self.rnn(code)
+        lstm_out = lstm_out[0]
         output = self.fc(lstm_out)
         return output
 
