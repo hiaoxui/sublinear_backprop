@@ -3,7 +3,7 @@ import torch
 
 class MegaCell(object):
     def __init__(self, base_cell_constructor, upper, lower,
-                 bidirectional, batch_first, criterion, multi_hidden):
+                 bidirectional, criterion, multi_hidden):
         """
 
         :param base_cell_constructor:
@@ -16,7 +16,6 @@ class MegaCell(object):
         self.upper = upper
         self.lower = lower
 
-        self.batch_first = batch_first
         self.bidirectional = bidirectional
         self.multi_hidden = multi_hidden
 
@@ -66,8 +65,6 @@ class MegaCell(object):
         assert direction in [-1, 0, 1]
         if self.lower is not None:
             time_steps = self.lower(time_steps)
-        if self.batch_first:
-            time_steps = time_steps.transpose(1, 0)
         if direction >= 0:
             self.states_l2r = _forward_helper(self.cell_l2r, time_steps, h0_l2r)
         if direction <= 0:
@@ -75,18 +72,17 @@ class MegaCell(object):
         if direction == -1:
             return self.states_r2l[0]
         elif direction == 0:
-            return [self.states_l2r[-1], self.states_r2l[0]]
+            return self.states_l2r[-1], self.states_r2l[0]
         else:
             return self.states_l2r[0]
 
-    def backward(self, direction, ys, additional_grad=None):
+    def get_output(self):
         """
 
-        :param int direction: -1, 0 or 1
-        :param torch.Tensor ys:
-        :param torch.Tensor/list[torch.Tensor] additional_grad:
-        :return:
+        :rtype: torch.Tensor
         """
+        assert len(self.states_l2r) > 0
+        assert not self.bidirectional or len(self.states_r2l) > 0
         states = list()
         if self.bidirectional:
             if self.multi_hidden:
@@ -102,6 +98,17 @@ class MegaCell(object):
             else:
                 states = self.states_l2r
         states = torch.cat(states)
+        logits = self.upper(states)
+        return logits
+
+    def backward(self, direction, ys, additional_grad=None):
+        """
+
+        :param int direction: -1, 0 or 1
+        :param torch.Tensor ys:
+        :param torch.Tensor/list[torch.Tensor] additional_grad:
+        :return:
+        """
 
         def detach_states(states_):
             """
@@ -142,7 +149,7 @@ class MegaCell(object):
             else:
                 return state.grad.detach()
 
-        def backward_helper(last_state_, states_):
+        def backward_helper(last_state_):
             """
 
             :param torch.Tensor last_state_:
@@ -150,17 +157,13 @@ class MegaCell(object):
             :rtype: None
             """
             losses = list()
-            losses.append(self.upper(states_))
             if additional_grad is not None:
-                if isinstance(last_state_, list):
-                    for state_, grad_ in zip(states_, additional_grad):
-                        losses.append((state_ * grad_).sum())
+                if self.multi_hidden:
+                    for hidden_tensor, grad_ in zip(last_state_, additional_grad):
+                        losses.append((hidden_tensor * grad_).sum())
                 else:
                     losses.append((last_state_ * additional_grad).sum())
-            logits = list()
-            for state_, y in zip(states_, ys):
-                logits.append(self.upper(state_))
-            pred = torch.tensor(logits)
+            pred = self.get_output()
             losses.append(self.criterion(pred, ys))
             torch.autograd.backward(losses)
 
@@ -169,13 +172,13 @@ class MegaCell(object):
             detach_states(self.states_r2l)
             need_grad(self.states_l2r[0])
             last_state = self.states_l2r[-1]
-            backward_helper(last_state, states)
+            backward_helper(last_state)
             return extract_grad(self.states_l2r[0])
         else:
             detach_states(self.states_l2r)
             need_grad(self.states_l2r[-1])
             last_state = self.states_r2l[0]
-            backward_helper(last_state, states)
+            backward_helper(last_state)
             return extract_grad(self.states_r2l[-1])
 
     def zero_upper_grad(self):
