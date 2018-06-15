@@ -1,3 +1,5 @@
+from utils import Scope
+
 
 class Node(object):
     def __init__(self, is_leaf, parent, *, scope=None, active=None, value=None):
@@ -12,10 +14,12 @@ class Node(object):
         self.is_leaf = is_leaf
         if self.is_leaf:
             self.value = value
-            self.scope = [value, value+1]
+            self.scope = Scope(value, value+1)
+            self.active = set()
+            self.active.add(value)
         else:
             self.active = active
-            self.scope = scope
+            self.scope = Scope(*scope)
             self.left_child = None
             self.right_child = None
         self.parent = parent
@@ -39,9 +43,8 @@ class BiTree(object):
         self.total = total
         self.root = self._build_tree()
         self.default_stepper = stepper
-        self._activate(0)
         self.storage = dict()
-        self.storage[0] = first_state
+        self._activate(0, first_state)
 
     def _build_tree(self):
 
@@ -56,11 +59,15 @@ class BiTree(object):
                 new_node.right_child = recursive(right_scope, new_node)
                 return new_node
 
-        return recursive([0, self.total], None)
+        return recursive(Scope(0, self.total), None)
 
     def _deactivate(self, idx):
-        if idx not in self.root.active:
+        assert idx in self.root.active
+        assert idx in self.storage
+        if idx == 0:
             return
+
+        del self.storage[idx]
 
         node = self.root
         while not node.is_leaf:
@@ -71,9 +78,11 @@ class BiTree(object):
             else:
                 node = node.right_child
 
-    def _activate(self, idx):
-        if idx in self.root.active:
-            return
+    def _activate(self, idx, stuff):
+        assert idx not in self.root.active
+        assert idx not in self.storage
+
+        self.storage[idx] = stuff
 
         node = self.root
         while not node.is_leaf:
@@ -91,16 +100,15 @@ class BiTree(object):
         node = node or self.root
         if node.is_leaf:
             return
-        next_stop_idx = node.right_left_most()
-        prev_node_idx = self._previous(next_stop_idx)
+        target_idx = node.right_left_most()
+        prev_node_idx = self._previous(target_idx)
         curr_state = self.storage[prev_node_idx]
-        while prev_node_idx < next_stop_idx:
+        while prev_node_idx < target_idx:
             stepper = yield curr_state
             stepper = stepper or self.default_stepper
-            curr_state = stepper(curr_state)
+            curr_state = stepper(curr_state, prev_node_idx)
             prev_node_idx += 1
-        self.storage[next_stop_idx] = curr_state
-        self._activate(next_stop_idx)
+        self._activate(target_idx, curr_state)
         yield from self.forward_generator(node.right_child)
 
     def forward(self):
@@ -114,6 +122,7 @@ class BiTree(object):
             last_node = last_node.right_child
         curr_node = last_node
         assert curr_node.value == self.total - 1
+        target_idx = curr_node.value - 1
         while curr_node.value != 0:
             next_node = curr_node
             next_value = curr_node.value - 1
@@ -132,7 +141,6 @@ class BiTree(object):
     def _clear_storage(self, node):
         to_clear = node.active.copy()
         for idx in to_clear:
-            del self.storage[idx]
             self._deactivate(idx)
 
 

@@ -1,5 +1,7 @@
 import torch
 
+from utils import detach_tensor
+
 
 class MegaCell(object):
     def __init__(self, base_cell_constructor, upper, lower,
@@ -19,7 +21,6 @@ class MegaCell(object):
         self.bidirectional = bidirectional
         self.multi_hidden = multi_hidden
 
-        assert issubclass(base_cell_constructor, torch.nn.Module)
         self.cell_l2r = base_cell_constructor()
         if self.bidirectional:
             self.cell_r2l = base_cell_constructor()
@@ -34,8 +35,8 @@ class MegaCell(object):
 
         :rtype: None
         """
-        self.states_r2l = list()
-        self.states_l2r = list()
+        del self.states_l2r[:]
+        del self.states_r2l[:]
 
     def forward(self, time_steps, direction, h0_l2r=None, h0_r2l=None):
         """
@@ -70,15 +71,16 @@ class MegaCell(object):
         if direction <= 0:
             self.states_r2l = _forward_helper(self.cell_r2l, time_steps, h0_r2l)[::-1]
         if direction == -1:
-            return self.states_r2l[0]
+            return detach_tensor(self.states_r2l[0])
         elif direction == 0:
-            return self.states_l2r[-1], self.states_r2l[0]
+            return detach_tensor([self.states_l2r[-1], self.states_r2l[0]])
         else:
-            return self.states_l2r[0]
+            return detach_tensor(self.states_l2r[-1])
 
-    def get_output(self):
+    def get_output(self, argmax):
         """
 
+        :param bool argmax:
         :rtype: torch.Tensor
         """
         assert len(self.states_l2r) > 0
@@ -94,12 +96,16 @@ class MegaCell(object):
         else:
             if self.multi_hidden:
                 for state_l2r in self.states_l2r:
-                    states.append(state_l2r)
+                    states.append(state_l2r[0])
             else:
                 states = self.states_l2r
-        states = torch.cat(states)
+        states = [state_t.unsqueeze(0) for state_t in states]
+        states = torch.cat(states, dim=0)
         logits = self.upper(states)
-        return logits
+        if argmax:
+            return torch.argmax(logits, dim=-1)
+        else:
+            return logits
 
     def backward(self, direction, ys, additional_grad=None):
         """
