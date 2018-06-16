@@ -1,7 +1,8 @@
 import torch
-from bitree import BiTree
 
+from bitree import BiTree
 from mega_cell import MegaCell
+from utils import *
 
 
 class Packer(object):
@@ -61,13 +62,31 @@ class Packer(object):
     def eval(self):
         self.training = False
 
+        def helper(module):
+            if module is not None and hasattr(module, 'eval'):
+                module.eval()
+
+        helper(self.mega_cell.upper)
+        helper(self.mega_cell.lower)
+        helper(self.mega_cell.cell_l2r)
+        helper(self.mega_cell.cell_r2l)
+
     def train(self):
         self.training = True
 
-    def __call__(self, *args):
-        self.forward(*args)
+        def helper(module):
+            if module is not None and hasattr(module, 'train'):
+                module.train()
 
-    def inference(self, xs, argmax):
+        helper(self.mega_cell.upper)
+        helper(self.mega_cell.lower)
+        helper(self.mega_cell.cell_l2r)
+        helper(self.mega_cell.cell_r2l)
+
+    def __call__(self, *args):
+        return self.forward(*args)
+
+    def _inference(self, xs, argmax):
         """
 
         :param tuple[torch.Tensor] xs:
@@ -80,17 +99,18 @@ class Packer(object):
         if self.bidirectional:
             n_chunk = len(xs)
 
-            r2l_tree = BiTree(total=n_chunk+1,
+            r2l_tree = BiTree(total=n_chunk,
                               first_state=first_state,
                               stepper=lambda hidden_state, time_stamp:
                               self.mega_cell.forward(xs[n_chunk-time_stamp-1], -1, h0_r2l=hidden_state))
             r2l_tree.forward()
 
-            reverse_gen = r2l_tree.backward_generator()
-            next(reverse_gen)
-
-            for chunk_idx in range(n_chunk):
-                pass
+            l2r_state = first_state
+            for chunk_idx, r2l_state in enumerate(r2l_tree.backward_generator()):
+                l2r_state, _ = \
+                    self.mega_cell.forward(xs[chunk_idx], 0, h0_l2r=l2r_state, h0_r2l=r2l_state)
+                all_output.append(self.mega_cell.get_output(argmax))
+                self.mega_cell.reset()
 
         else:
             curr_hidden = first_state
@@ -103,8 +123,55 @@ class Packer(object):
         all_output = torch.cat(all_output, dim=0)
         return all_output
 
-    def estimate(self, xs, ys):
-        pass
+    def _estimate(self, xs, ys):
+        batch_size = xs[0].shape[1]
+        first_state = self._init_state(batch_size)
+        n_chunk = len(xs)
+
+        def extract_grad(state):
+            """
+
+            :param torch.Tensor or list[torch.Tensor] state:
+            :rtype:
+            """
+            if self.multi_hidden:
+                return [hidden_state_.grad.detach() for hidden_state_ in state]
+            else:
+                return state.grad.detach()
+
+        l2r_tree = BiTree(total=n_chunk,
+                          first_state=first_state,
+                          stepper=lambda hidden_state_, time_stamp_:
+                          self.mega_cell.forward(xs[time_stamp_], 1, h0_l2r=hidden_state_))
+        l2r_tree.forward()
+
+        if self.bidirectional:
+
+            def r2l_stepper_gen(h0_l2r_):
+                def r2l_stepper(time_stamp_, h0_r2l_):
+                    x = xs[n_chunk-time_stamp_-1]
+                    state_l2r_, state_r2l_ = self.mega_cell.forward(x, 0, h0_l2r=h0_l2r_, h0_r2l=h0_r2l_)
+                    return state_r2l_
+                return r2l_stepper
+
+            r2l_tree = BiTree(total=n_chunk,
+                              first_state=first_state,
+                              stepper=lambda _: None,
+                              )
+
+            r2l_gen = r2l_tree.forward_generator()
+            next(r2l_gen)
+            for h0_l2r in l2r_tree.backward_generator():
+                r2l_gen.send(r2l_stepper_gen(h0_l2r))
+
+        else:
+            right_grad = None
+            for chunk_idx, left_state in enumerate(l2r_tree.backward_generator()):
+                time_stamp = n_chunk - chunk_idx - 1
+                retain_grad(left_state)
+                self.mega_cell.forward(xs[time_stamp], 1, h0_l2r=left_state)
+                self.mega_cell.backward(1, ys[time_stamp], additional_grad=right_grad)
+                right_grad = extract_grad(left_state)
 
     def forward(self, xs, ys=None, argmax=True):
         """
@@ -125,10 +192,36 @@ class Packer(object):
         if self.training and ys is None:
             raise Exception("Please provide labels during training!")
         if self.training:
-            self.estimate(xs, ys)
+            self._estimate(xs, ys)
+            self.mega_cell.reset()
         else:
-            output = self.inference(xs, argmax)
+            output = self._inference(xs, argmax)
+            self.mega_cell.reset()
             if self.batch_first:
                 return output.transpose(1, 0)
             else:
                 return output
+
+    def parameters(self):
+        if self.mega_cell.lower is not None:
+            yield from self.mega_cell.lower.parameters()
+        if self.mega_cell.upper is not None:
+            yield from self.mega_cell.upper.parameters()
+        if self.mega_cell.cell_l2r is not None:
+            yield from self.mega_cell.cell_l2r.parameters()
+        if self.mega_cell.cell_r2l is not None:
+            yield from self.mega_cell.cell_r2l.parameters()
+
+    def cuda(self):
+        if self.mega_cell.lower is not None:
+            self.mega_cell.lower.cuda()
+        if self.mega_cell.upper is not None:
+            self.mega_cell.upper.cuda()
+        if self.mega_cell.cell_l2r is not None:
+            self.mega_cell.cell_l2r.cuda()
+        if self.mega_cell.cell_r2l is not None:
+            self.mega_cell.cell_r2l.cuda()
+        if isinstance(self.hidden_size, int):
+            self.init_hidden = self.init_hidden.cuda()
+        else:
+            self.init_hidden = [hidden.cuda() for hidden in self.init_hidden]

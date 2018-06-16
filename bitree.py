@@ -122,21 +122,23 @@ class BiTree(object):
             last_node = last_node.right_child
         curr_node = last_node
         assert curr_node.value == self.total - 1
-        target_idx = curr_node.value - 1
+        assert last_node.value in self.root.active
+        yield self.storage[last_node.value]
         while curr_node.value != 0:
             next_node = curr_node
-            next_value = curr_node.value - 1
-            while next_node.value not in next_node.scope:
+            target_idx = curr_node.value - 1
+            while target_idx not in next_node.scope:
                 next_node = next_node.parent
-            self._clear_storage(next_node)
+            self._clear_storage(next_node.right_child)
             for _ in self.forward_generator(next_node.left_child):
                 pass
             while not next_node.is_leaf:
-                if next_value in next_node.left_child.scope:
+                if target_idx in next_node.left_child.scope:
                     next_node = next_node.left_child
                 else:
                     next_node = next_node.right_child
-            yield self.storage[next_value]
+            curr_node = next_node
+            yield self.storage[target_idx]
 
     def _clear_storage(self, node):
         to_clear = node.active.copy()

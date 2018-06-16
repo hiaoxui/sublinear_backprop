@@ -1,16 +1,3 @@
-import torch
-
-
-def detach_tensor(tensors):
-    """
-
-    :param torch.Tensor/list[torch.Tensor] tensors:
-    :rtype: torch.Tensor/list[torch.Tensor]
-    """
-    if isinstance(tensors, list) or isinstance(tensors, tuple):
-        return [detach_tensor(tensor) for tensor in tensors]
-    return tensors.detach()
-
 
 class Scope(object):
     def __init__(self, beg, end):

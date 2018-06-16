@@ -28,18 +28,34 @@ packer = Packer(
     #hidden_size=cfg.hidden_dim,
     bidirectional=cfg.bi,
     criterion=torch.nn.CrossEntropyLoss(),
-    longest=200
+    longest=cfg.max_step
 )
+if cfg.cuda:
+    packer.cuda()
 
 from data_gen import Corpus
 corpus = Corpus()
 
 
-packer.eval()
+packer.train()
 cnt = 0
+optim = torch.optim.Adam(packer.parameters())
 while True:
     xs, ys = corpus(cfg.batch_size)
     xs, ys = torch.tensor(xs), torch.tensor(ys)
-    packer(xs)
-    print('-' * 25 + str(cnt) + '-'*25)
+    if cfg.cuda:
+        xs, ys = xs.cuda(), ys.cuda()
+    if cnt % 10 == 0:
+        packer.eval()
+        outputs = packer(xs)
+        outputs = outputs.contiguous().view(-1)
+        ys = ys.view(-1)
+        print((outputs == ys).sum().cpu().numpy() / len(outputs))
+        packer.train()
+    else:
+        optim.zero_grad()
+        packer(xs, ys)
+        optim.step()
+
+    print('-'*25 + str(cnt) + '-'*25)
     cnt += 1

@@ -1,6 +1,6 @@
 import torch
 
-from utils import detach_tensor
+from utils import *
 
 
 class MegaCell(object):
@@ -24,6 +24,8 @@ class MegaCell(object):
         self.cell_l2r = base_cell_constructor()
         if self.bidirectional:
             self.cell_r2l = base_cell_constructor()
+        else:
+            self.cell_r2l = None
 
         self.states_l2r = list()
         self.states_r2l = list()
@@ -38,7 +40,7 @@ class MegaCell(object):
         del self.states_l2r[:]
         del self.states_r2l[:]
 
-    def forward(self, time_steps, direction, h0_l2r=None, h0_r2l=None):
+    def forward(self, time_steps, direction, *, h0_l2r=None, h0_r2l=None):
         """
 
         :param torch.Tensor time_steps:
@@ -116,50 +118,10 @@ class MegaCell(object):
         :return:
         """
 
-        def detach_states(states_):
-            """
-
-            :param list[torch.Tensor]/list[list[torch.Tensor]] states_:
-            :rtype: None
-            """
-            if self.multi_hidden:
-                for state_ in states_:
-                    for hidden_state_ in state_:
-                        hidden_state_.detach_()
-            else:
-                for state_ in states_:
-                    state_.detach_()
-
-        def need_grad(state_):
-            """
-
-            :param torch.Tensor/list[torch.Tensor] state_:
-            :rtype:
-            """
-            if self.multi_hidden:
-                for hidden_state_ in state_:
-                    hidden_state_.requires_grad_()
-                    hidden_state_.retain_grad()
-            else:
-                state_.requires_grad_()
-                state_.retain_grad()
-
-        def extract_grad(state):
-            """
-
-            :param torch.Tensor/list[torch.Tensor] state:
-            :rtype:
-            """
-            if self.multi_hidden:
-                return [hidden_state_.grad.detach() for hidden_state_ in state]
-            else:
-                return state.grad.detach()
-
         def backward_helper(last_state_):
             """
 
             :param torch.Tensor last_state_:
-            :param torch.list[torch.Tensor] states_:
             :rtype: None
             """
             losses = list()
@@ -169,23 +131,19 @@ class MegaCell(object):
                         losses.append((hidden_tensor * grad_).sum())
                 else:
                     losses.append((last_state_ * additional_grad).sum())
-            pred = self.get_output()
-            losses.append(self.criterion(pred, ys))
+            pred = self.get_output(False)
+            ys_flat = ys.contiguous().view(-1)
+            pred_flat = pred.view(len(ys_flat), -1)
+            losses.append(self.criterion(pred_flat, ys_flat))
             torch.autograd.backward(losses)
 
         assert direction in [-1, 1]
         if direction == 1:
-            detach_states(self.states_r2l)
-            need_grad(self.states_l2r[0])
             last_state = self.states_l2r[-1]
             backward_helper(last_state)
-            return extract_grad(self.states_l2r[0])
         else:
-            detach_states(self.states_l2r)
-            need_grad(self.states_l2r[-1])
             last_state = self.states_r2l[0]
             backward_helper(last_state)
-            return extract_grad(self.states_r2l[-1])
 
     def zero_upper_grad(self):
         """
