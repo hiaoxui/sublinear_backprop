@@ -131,7 +131,7 @@ class MegaCell(object):
                         losses.append((hidden_tensor * grad_).sum())
                 else:
                     losses.append((last_state_ * additional_grad).sum())
-            pred = self.get_output(False)
+            pred = self.get_output(argmax=False)
             ys_flat = ys.contiguous().view(-1)
             pred_flat = pred.view(len(ys_flat), -1)
             losses.append(self.criterion(pred_flat, ys_flat))

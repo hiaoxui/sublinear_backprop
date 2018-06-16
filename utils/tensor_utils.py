@@ -23,4 +23,3 @@ def retain_grad(tensors):
         return
     tensors.requires_grad_()
     tensors.retain_grad()
-

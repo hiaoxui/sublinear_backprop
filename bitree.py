@@ -144,8 +144,3 @@ class BiTree(object):
         to_clear = node.active.copy()
         for idx in to_clear:
             self._deactivate(idx)
-
-
-if __name__ == '__main__':
-    bt = BiTree(10, None, None)
-    x = 1

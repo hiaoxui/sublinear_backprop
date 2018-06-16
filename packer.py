@@ -35,14 +35,8 @@ class Packer(object):
             bidirectional=bidirectional
         )
 
-        if self.multi_hidden:
-            self.init_hidden = list()
-            for n_hidden in hidden_size:
-                self.init_hidden.append(torch.zeros(size=(n_hidden,)))
-        else:
-            self.init_hidden = torch.zeros(size=(hidden_size,))
-
         self.training = False
+        self.is_cuda = False
 
     def _init_state(self, batch_size, hidden_size=None):
         """
@@ -52,11 +46,19 @@ class Packer(object):
         """
         hidden_size = hidden_size or self.hidden_size
         if isinstance(hidden_size, int):
-            return self.init_hidden.unsqueeze(0).expand(batch_size, *self.init_hidden.shape)
+            rst = torch.zeros(size=(batch_size, hidden_size))
+            if self.is_cuda:
+                return rst.cuda()
+            else:
+                return rst
         else:
             rst = list()
-            for hidden_state in self.init_hidden:
-                rst.append(hidden_state.unsqueeze(0).expand(batch_size, *hidden_state.shape))
+            for hidden_size_ in hidden_size:
+                to_app = torch.zeros(batch_size, hidden_size_)
+                if self.is_cuda:
+                    rst.append(to_app.cuda())
+                else:
+                    rst.append(to_app)
             return rst
 
     def eval(self):
@@ -148,29 +150,31 @@ class Packer(object):
         if self.bidirectional:
 
             def r2l_stepper_gen(h0_l2r_):
-                def r2l_stepper(time_stamp_, h0_r2l_):
+                def r2l_stepper(h0_r2l_, time_stamp_):
                     x = xs[n_chunk-time_stamp_-1]
                     state_l2r_, state_r2l_ = self.mega_cell.forward(x, 0, h0_l2r=h0_l2r_, h0_r2l=h0_r2l_)
                     return state_r2l_
                 return r2l_stepper
 
-            r2l_tree = BiTree(total=n_chunk,
+            r2l_tree = BiTree(total=n_chunk+1,
                               first_state=first_state,
-                              stepper=lambda time_stamp_, h0_r2l_:
-                              self.mega_cell.forward(time_stamp_(n_chunk-1-time_stamp_), -1, h0_r2l=h0_r2l_)
+                              stepper=lambda h0_r2l_, time_stamp_:
+                              self.mega_cell.forward(xs[n_chunk-1-time_stamp_], -1, h0_r2l=h0_r2l_)
                               )
 
             r2l_gen = r2l_tree.forward_generator()
             next(r2l_gen)
             right_grad = None
             for chunk_idx, left_state in enumerate(l2r_tree.backward_generator()):
+                retain_grad(left_state)
                 try:
                     r2l_gen.send(r2l_stepper_gen(left_state))
                 except StopIteration:
-                    print('iter stop')
                     pass
-                self.mega_cell.backward(ys[chunk_idx], 1, right_grad)
+                time_stamp = n_chunk - 1 - chunk_idx
+                self.mega_cell.backward(ys[time_stamp], 1, right_grad)
                 right_grad = extract_grad(left_state)
+                self.mega_cell.reset()
 
             # in case of repeated gradients computation of upper layers
             self.mega_cell.zero_upper_grad()
@@ -178,10 +182,14 @@ class Packer(object):
             left_state = self._init_state(batch_size)
             left_grad = None
             for chunk_idx, right_state in enumerate(r2l_tree.backward_generator()):
-                time_stamp = n_chunk - 1 - chunk_idx
-                self.mega_cell.forward(xs[time_stamp], 1, h0_l2r=left_state, h0_r2l=right_state)
+                if chunk_idx == 0:
+                    continue
+                time_stamp = chunk_idx - 1
+                retain_grad(right_state)
+                self.mega_cell.forward(xs[time_stamp], 0, h0_l2r=left_state, h0_r2l=right_state)
                 self.mega_cell.backward(ys[time_stamp], -1, additional_grad=left_grad)
                 left_grad = extract_grad(right_state)
+                self.mega_cell.reset()
 
         else:
             right_grad = None
@@ -240,7 +248,4 @@ class Packer(object):
             self.mega_cell.cell_l2r.cuda()
         if self.mega_cell.cell_r2l is not None:
             self.mega_cell.cell_r2l.cuda()
-        if isinstance(self.hidden_size, int):
-            self.init_hidden = self.init_hidden.cuda()
-        else:
-            self.init_hidden = [hidden.cuda() for hidden in self.init_hidden]
+        self.is_cuda = True
