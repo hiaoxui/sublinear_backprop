@@ -1,7 +1,7 @@
 import torch
 
-from bitree import BiTree
-from mega_cell import MegaCell
+from core.bitree import BiTree
+from core.mega_cell import MegaCell
 from utils import *
 
 

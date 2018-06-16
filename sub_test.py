@@ -12,7 +12,7 @@ upper = torch.nn.Linear(
     out_features=cfg.voc_size,
 )
 
-from packer import Packer
+from core.packer import Packer
 from functools import *
 
 packer = Packer(
