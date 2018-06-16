@@ -4,8 +4,8 @@ import torch
 class Config(object):
     def __init__(self):
         self.hidden_dim = 64
-        self.bi = True
-        self.batch_size = 300
+        self.bi = False
+        self.batch_size = 20
         self.repeat_period = 15
         self.voc_size = 49
         self.embedding_dim = 16

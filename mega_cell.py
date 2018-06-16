@@ -109,7 +109,7 @@ class MegaCell(object):
         else:
             return logits
 
-    def backward(self, direction, ys, additional_grad=None):
+    def backward(self, ys, direction, additional_grad=None):
         """
 
         :param int direction: -1, 0 or 1
@@ -139,9 +139,11 @@ class MegaCell(object):
 
         assert direction in [-1, 1]
         if direction == 1:
+            detach_tensor(self.states_r2l)
             last_state = self.states_l2r[-1]
             backward_helper(last_state)
         else:
+            detach_tensor(self.states_l2r)
             last_state = self.states_r2l[0]
             backward_helper(last_state)
 

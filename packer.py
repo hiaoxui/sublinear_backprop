@@ -156,13 +156,32 @@ class Packer(object):
 
             r2l_tree = BiTree(total=n_chunk,
                               first_state=first_state,
-                              stepper=lambda _: None,
+                              stepper=lambda time_stamp_, h0_r2l_:
+                              self.mega_cell.forward(time_stamp_(n_chunk-1-time_stamp_), -1, h0_r2l=h0_r2l_)
                               )
 
             r2l_gen = r2l_tree.forward_generator()
             next(r2l_gen)
-            for h0_l2r in l2r_tree.backward_generator():
-                r2l_gen.send(r2l_stepper_gen(h0_l2r))
+            right_grad = None
+            for chunk_idx, left_state in enumerate(l2r_tree.backward_generator()):
+                try:
+                    r2l_gen.send(r2l_stepper_gen(left_state))
+                except StopIteration:
+                    print('iter stop')
+                    pass
+                self.mega_cell.backward(ys[chunk_idx], 1, right_grad)
+                right_grad = extract_grad(left_state)
+
+            # in case of repeated gradients computation of upper layers
+            self.mega_cell.zero_upper_grad()
+
+            left_state = self._init_state(batch_size)
+            left_grad = None
+            for chunk_idx, right_state in enumerate(r2l_tree.backward_generator()):
+                time_stamp = n_chunk - 1 - chunk_idx
+                self.mega_cell.forward(xs[time_stamp], 1, h0_l2r=left_state, h0_r2l=right_state)
+                self.mega_cell.backward(ys[time_stamp], -1, additional_grad=left_grad)
+                left_grad = extract_grad(right_state)
 
         else:
             right_grad = None
@@ -170,7 +189,7 @@ class Packer(object):
                 time_stamp = n_chunk - chunk_idx - 1
                 retain_grad(left_state)
                 self.mega_cell.forward(xs[time_stamp], 1, h0_l2r=left_state)
-                self.mega_cell.backward(1, ys[time_stamp], additional_grad=right_grad)
+                self.mega_cell.backward(ys[time_stamp], 1, additional_grad=right_grad)
                 right_grad = extract_grad(left_state)
 
     def forward(self, xs, ys=None, argmax=True):
