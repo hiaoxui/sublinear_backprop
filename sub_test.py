@@ -2,6 +2,8 @@ import torch
 
 from config import cfg
 
+torch.manual_seed(9788)
+
 
 lower = torch.nn.Embedding(
     embedding_dim=cfg.embedding_dim,
@@ -42,10 +44,10 @@ cnt = 0
 optim = torch.optim.Adam(packer.parameters())
 while True:
     xs, ys = corpus(cfg.batch_size)
-    xs, ys = torch.tensor(xs), torch.tensor(ys)
+    xs, ys = torch.tensor(xs, dtype=torch.int64), torch.tensor(ys, dtype=torch.int64)
     if cfg.cuda:
         xs, ys = xs.cuda(), ys.cuda()
-    if cnt % 10 == 0:
+    if cnt % 3 == 0:
         packer.eval()
         outputs = packer(xs)
         outputs = outputs.contiguous().view(-1)

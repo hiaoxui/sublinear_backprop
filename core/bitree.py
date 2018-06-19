@@ -22,7 +22,10 @@ class Node(object):
             self.active.add(value)
         else:
             self.active = active
-            self.scope = range(*scope)
+            if isinstance(scope, range):
+                self.scope = scope
+            else:
+                self.scope = range(*scope)
             self.left_child = None
             self.right_child = None
         self.parent = parent
@@ -210,3 +213,9 @@ class BiTree(object):
         to_clear = node.active.copy()
         for idx in to_clear:
             self._deactivate(idx)
+
+
+if __name__ == '__main__':
+    bt = BiTree(64, 0, lambda x_, _: x_ + 1)
+    bt.forward()
+    x = 1

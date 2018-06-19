@@ -21,7 +21,7 @@ class Packer(object):
     >>> # binary classification, voc_size = 30, emb_dim = 10, hidden_dim = 20, batch first
     >>> packer = Packer(partial(torch.nn.LSTMCell, 10, 20), torch.nn.Linear(20, 2),
     >>>                 torch.nn.Embedding(30, 10), [20, 20], True, False,
-    >>>                 torch.nn.CrossEntropyLoss, 16)
+    >>>                 torch.nn.CrossEntropyLoss(), 16)
     >>> xs = torch.randint(0, 30, size=(17, 4096)) # batch_size = 17
     >>> ys = torch.randint(0, 2, size=(17, 4096))  # binary classification
     >>> # estimation
@@ -188,10 +188,11 @@ class Packer(object):
         all_output = torch.cat(all_output, dim=0)
         return all_output
 
-    def _estimate(self, xs, ys):
+    def _estimate(self, xs, ys, seq_len):
         """
         :param tuple(torch.Tensor) xs: Features
         :param tuple(torch.Tensor) ys: Labels.
+        :param int seq_len: Length of the sequence.
         """
         batch_size = xs[0].shape[1]
         first_state = self._init_state(batch_size)
@@ -239,7 +240,8 @@ class Packer(object):
                 except StopIteration:
                     pass
                 time_stamp = n_chunk - 1 - chunk_idx
-                self.mega_cell.backward(ys[time_stamp], 1, right_grad)
+                ys_ = ys[time_stamp]
+                self.mega_cell.backward(ys_, 1, right_grad, loss_weight=len(ys_)/seq_len)
                 right_grad = extract_grad(left_state)
                 self.mega_cell.reset()
 
@@ -253,8 +255,10 @@ class Packer(object):
                     continue
                 time_stamp = chunk_idx - 1
                 retain_grad(right_state)
-                self.mega_cell.forward(xs[time_stamp], 0, h0_l2r=left_state, h0_r2l=right_state)
-                self.mega_cell.backward(ys[time_stamp], -1, additional_grad=left_grad)
+                xs_, ys_ = xs[time_stamp], ys[time_stamp]
+                self.mega_cell.forward(xs_, 0, h0_l2r=left_state, h0_r2l=right_state)
+                self.mega_cell.backward(ys_, -1, additional_grad=left_grad,
+                                        loss_weight=len(xs_)/seq_len)
                 left_grad = extract_grad(right_state)
                 self.mega_cell.reset()
 
@@ -263,8 +267,10 @@ class Packer(object):
             for chunk_idx, left_state in enumerate(l2r_tree.backward_generator()):
                 time_stamp = n_chunk - chunk_idx - 1
                 retain_grad(left_state)
-                self.mega_cell.forward(xs[time_stamp], 1, h0_l2r=left_state)
-                self.mega_cell.backward(ys[time_stamp], 1, additional_grad=right_grad)
+                xs_, ys_ = xs[time_stamp], ys[time_stamp]
+                self.mega_cell.forward(xs_, 1, h0_l2r=left_state)
+                self.mega_cell.backward(ys_, 1, additional_grad=right_grad,
+                                        loss_weight=len(xs_) / seq_len)
                 right_grad = extract_grad(left_state)
 
     def forward(self, xs, ys=None, argmax=True):
@@ -279,6 +285,7 @@ class Packer(object):
             xs = xs.transpose(1, 0)
             if ys is not None:
                 ys = ys.transpose(1, 0)
+        seq_len = len(xs)
         n_chunk = (len(xs)-1) // self.step + 1
         xs = xs.chunk(n_chunk, dim=0)
         if ys is not None:
@@ -286,7 +293,7 @@ class Packer(object):
         if self.training and ys is None:
             raise Exception("Please provide labels during training!")
         if self.training:
-            self._estimate(xs, ys)
+            self._estimate(xs, ys, seq_len)
             self.mega_cell.reset()
         else:
             output = self._inference(xs, argmax)

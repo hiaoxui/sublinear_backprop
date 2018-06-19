@@ -36,7 +36,7 @@ class MegaCell(object):
         >>> torch.nn.Embedding(30, 10) # (for voc_size = 30 and emb_dim = 10)
         :param torch.nn.modules.loss._Loss criterion: How to calculate the loss?
         Usage Example:
-        >>> torch.nn.CrossEntropyLoss
+        >>> torch.nn.CrossEntropyLoss()
         :param bool multi_hidden: Does the cell have multiple types of hidden states?
         Example: For LSTMs, it's True because LSTMs have both hidden states and memory cell.
         Example: For GRUs, it's False since it contains only hidden states.
@@ -138,7 +138,7 @@ class MegaCell(object):
         else:
             return logits
 
-    def backward(self, ys, direction, additional_grad=None):
+    def backward(self, ys, direction, additional_grad=None, loss_weight=1.0):
         """
         Backward propagation. Should be called after calling forward method.
         :param torch.Tensor ys: Labels. Must be shaped as (sequence, batch)
@@ -147,11 +147,14 @@ class MegaCell(object):
         Gradients from following layers. Should be shaped the same as hidden states.
         Leave it None if you have no additional gradients. E.g., for the last time stamp, there
         should be no gradients propagated from following cells.
+        :param float loss_weight: Loss function often applies average over training examples. When
+        the training examples are not the complete data, we need to add a factor to re-balance the
+        loss.
         """
 
         def backward_helper(last_state_):
             """
-            :param torch.Tensor last_state_: The state of the last time stamp.
+            :param torch.Tensor or list last_state_: The state of the last time stamp.
             """
             losses = list()
             if additional_grad is not None:
@@ -164,17 +167,15 @@ class MegaCell(object):
             pred = self.get_output(argmax=False)
             ys_flat = ys.contiguous().view(-1)
             pred_flat = pred.view(len(ys_flat), -1)
-            losses.append(self.criterion(pred_flat, ys_flat))
+            losses.append(self.criterion(pred_flat, ys_flat) * loss_weight)
             torch.autograd.backward(losses)
 
         assert direction in [-1, 1]
 
         if direction == 1:
-            detach_tensor(self.states_r2l)
             last_state = self.states_l2r[-1]
             backward_helper(last_state)
         else:
-            detach_tensor(self.states_l2r)
             last_state = self.states_r2l[0]
             backward_helper(last_state)
 

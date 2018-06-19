@@ -3,13 +3,13 @@ import torch
 
 class Config(object):
     def __init__(self):
-        self.hidden_dim = 64
-        self.bi = False
-        self.batch_size = 20
-        self.repeat_period = 15
-        self.voc_size = 49
+        self.hidden_dim = 16
+        self.bi = True
+        self.batch_size = 10
+        self.repeat_period = 10
+        self.voc_size = 25
         self.embedding_dim = 16
-        self.max_step = 200
+        self.max_step = 100
 
         self.seq_length = 1024
 
