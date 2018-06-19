@@ -47,7 +47,7 @@ while True:
     xs, ys = torch.tensor(xs, dtype=torch.int64), torch.tensor(ys, dtype=torch.int64)
     if cfg.cuda:
         xs, ys = xs.cuda(), ys.cuda()
-    if cnt % 3 == 0:
+    if cnt % 1 == 0:
         packer.eval()
         outputs = packer(xs)
         outputs = outputs.contiguous().view(-1)

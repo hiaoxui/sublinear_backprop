@@ -166,11 +166,12 @@ class Packer(object):
 
             r2l_tree = BiTree(total=n_chunk,
                               first_state=first_state,
-                              stepper=lambda hidden_state, time_stamp:
-                              self.mega_cell.forward(xs[n_chunk-time_stamp-1], -1, h0_r2l=hidden_state))
+                              stepper=lambda hidden_state_, time_stamp_:
+                              self.mega_cell.forward(xs[n_chunk-time_stamp_-1], -1,
+                                                     h0_r2l=hidden_state_))
             r2l_tree.forward()
 
-            l2r_state = first_state
+            l2r_state = self._init_state(batch_size)
             for chunk_idx, r2l_state in enumerate(r2l_tree.backward_generator()):
                 l2r_state, _ = \
                     self.mega_cell.forward(xs[chunk_idx], 0, h0_l2r=l2r_state, h0_r2l=r2l_state)

@@ -78,17 +78,20 @@ class MegaCell(object):
         Needed if direction = -1 or 0.
         :return: Last hidden state of forward propagation.
         """
-        def _forward_helper(cell, time_steps_, h0):
+        def _forward_helper(cell, time_steps_, h0, direction_):
             """
             :param torch.nn.Module cell: Cell to use.
             :param torch.Tensor time_steps_: Inputs.
             :param torch.Tensor h0: Initial hidden states.
+            :param int direction_: 1 for left2right, and -1 for right2left.
             :return: All the intermediate hidden states.
             """
             curr_state = h0
             states = list()
-            for time_stamp in time_steps_:
-                curr_state = cell(time_stamp, curr_state)
+            seqs = range(len(time_steps_)) if direction_ == 1 else range(len(time_steps_)-1, -1, -1)
+            for time_stamp in seqs:
+                xs = time_steps_[time_stamp]
+                curr_state = cell(xs, curr_state)
                 states.append(curr_state)
             return states
 
@@ -97,9 +100,9 @@ class MegaCell(object):
         if self.lower is not None:
             time_steps = self.lower(time_steps)
         if direction >= 0:
-            self.states_l2r = _forward_helper(self.cell_l2r, time_steps, h0_l2r)
+            self.states_l2r = _forward_helper(self.cell_l2r, time_steps, h0_l2r, 1)
         if direction <= 0:
-            self.states_r2l = _forward_helper(self.cell_r2l, time_steps, h0_r2l)[::-1]
+            self.states_r2l = _forward_helper(self.cell_r2l, time_steps, h0_r2l, -1)[::-1]
         if direction == -1:
             return detach_tensor(self.states_r2l[0])
         elif direction == 0:
@@ -172,12 +175,14 @@ class MegaCell(object):
 
         assert direction in [-1, 1]
 
+        # retain_grad(self.states_l2r)
+        # retain_grad(self.states_r2l)
         if direction == 1:
-            last_state = self.states_l2r[-1]
-            backward_helper(last_state)
+            backward_helper(self.states_l2r[-1])
         else:
-            last_state = self.states_r2l[0]
-            backward_helper(last_state)
+            backward_helper(self.states_r2l[0])
+
+        # x = 1
 
     def zero_upper_grad(self):
         """
