@@ -1,19 +1,45 @@
 import torch
 
-from utils import *
+from .utils import *
 
 
 class MegaCell(object):
+    """
+    MegaCell is an abstract component for recurrent neural networks (RNNs).
+    It contains three torch Modules, a Module that preprocess inputs before sending
+    to RNNs (optional), a RNN cell and a prediction layer (optional).
+    Basically speaking, it acts like a typical RNNs prediction model, processing
+    inputs with multiple timestamps bidirectionally, while it is not
+    inherited from torch.Module.
+    Besides the general functions of RNNs, MegaCell also allows users to specify
+    initiate hidden states during the forward propagation, and provide the gradients
+    from the previous MegaCell during the backward propagation, which is essential
+    for sublinear backpropagation.
+    Due to some theoretic problems, MegaCell doesn't support multilayer RNNs.
+    """
     def __init__(self, base_cell_constructor, upper, lower,
                  bidirectional, criterion, multi_hidden):
         """
-
-        :param base_cell_constructor:
-        :param bool bidirectional:
-        :param torch.nn.Module upper:
-        :param torch.nn.Module lower:
-        :param torch.nn.modules.loss._Loss criterion:
-        :param bool multi_hidden:
+        :param base_cell_constructor: Constructor for RNNs cell. You should specify
+        all the parameters of the cell outside. Usage Examples:
+        >>> partial(torch.nn.LSTMCell, 10, 20)
+        >>> partial(torch.nn.GRUCell, 10, 20)
+        :param bool bidirectional: If True, two cells will be initiated.
+        :param torch.nn.Module upper: (optional) The outputs of RNNs cells will be sent
+        to module upper. Note that you need to give us a module, instead of a constructor.
+        Usage Example:
+        >>> torch.nn.Linear(20, 2) # (For a binary classification)
+        :param torch.nn.Module lower: (optional) All the inputs will be preprocessed by
+        module lower before being sent to RNNs cells. Note that you need to give us a
+        module, instead of a constructor.
+        Usage Example:
+        >>> torch.nn.Embedding(30, 10) # (for voc_size = 30 and emb_dim = 10)
+        :param torch.nn.modules.loss._Loss criterion: How to calculate the loss?
+        Usage Example:
+        >>> torch.nn.CrossEntropyLoss
+        :param bool multi_hidden: Does the cell have multiple types of hidden states?
+        Example: For LSTMs, it's True because LSTMs have both hidden states and memory cell.
+        Example: For GRUs, it's False since it contains only hidden states.
         """
         self.upper = upper
         self.lower = lower
@@ -34,28 +60,30 @@ class MegaCell(object):
 
     def reset(self):
         """
-
-        :rtype: None
+        Reset all calculated states.
+        You don't need to call this method very often since we will clear it when they are no
+        longer needed.
         """
         del self.states_l2r[:]
         del self.states_r2l[:]
 
     def forward(self, time_steps, direction, *, h0_l2r=None, h0_r2l=None):
         """
-
-        :param torch.Tensor time_steps:
-        :param int direction: -1, 0 or 1
-        :param torch.Tensor h0_l2r:
-        :param torch.Tensor h0_r2l:
-        :return:
+        Forward propagation. All the intermediate hidden states will be stored in the class.
+        :param torch.Tensor time_steps: Inputs, or xs. Must be the shape of (sequence, batch, ...)
+        :param int direction: -1 (Right to left), 0 (Both directions) or 1 (Left to right).
+        :param torch.Tensor h0_l2r: Hidden states for left2right propagation.
+        Needed if direction = 1 or 0.
+        :param torch.Tensor h0_r2l: Hidden states for right2right propagation.
+        Needed if direction = -1 or 0.
+        :return: Last hidden state of forward propagation.
         """
         def _forward_helper(cell, time_steps_, h0):
             """
-
-            :param torch.nn.Module cell:
-            :param torch.Tensor time_steps_:
-            :param torch.Tensor h0:
-            :return:
+            :param torch.nn.Module cell: Cell to use.
+            :param torch.Tensor time_steps_: Inputs.
+            :param torch.Tensor h0: Initial hidden states.
+            :return: All the intermediate hidden states.
             """
             curr_state = h0
             states = list()
@@ -81,8 +109,9 @@ class MegaCell(object):
 
     def get_output(self, argmax):
         """
-
-        :param bool argmax:
+        Get all the outputs. Called after calling forward.
+        :param bool argmax: Whether to use argmax at the last dimension.
+        If True, more memory could be saved.
         :rtype: torch.Tensor
         """
         assert len(self.states_l2r) > 0
@@ -111,23 +140,24 @@ class MegaCell(object):
 
     def backward(self, ys, direction, additional_grad=None):
         """
-
-        :param int direction: -1, 0 or 1
-        :param torch.Tensor ys:
+        Backward propagation. Should be called after calling forward method.
+        :param torch.Tensor ys: Labels. Must be shaped as (sequence, batch)
+        :param int direction: -1 or 1. -1 for right2left, and 1 for left2right.
         :param torch.Tensor/list[torch.Tensor] additional_grad:
-        :return:
+        Gradients from following layers. Should be shaped the same as hidden states.
+        Leave it None if you have no additional gradients. E.g., for the last time stamp, there
+        should be no gradients propagated from following cells.
         """
 
         def backward_helper(last_state_):
             """
-
-            :param torch.Tensor last_state_:
-            :rtype: None
+            :param torch.Tensor last_state_: The state of the last time stamp.
             """
             losses = list()
             if additional_grad is not None:
                 if self.multi_hidden:
                     for hidden_tensor, grad_ in zip(last_state_, additional_grad):
+                        # It is equivalent mathematically.
                         losses.append((hidden_tensor * grad_).sum())
                 else:
                     losses.append((last_state_ * additional_grad).sum())
@@ -138,6 +168,7 @@ class MegaCell(object):
             torch.autograd.backward(losses)
 
         assert direction in [-1, 1]
+
         if direction == 1:
             detach_tensor(self.states_r2l)
             last_state = self.states_l2r[-1]
@@ -149,7 +180,6 @@ class MegaCell(object):
 
     def zero_upper_grad(self):
         """
-
-        :rtype: None
+        Zero the gradients of upper module.
         """
         self.upper.zero_grad()
