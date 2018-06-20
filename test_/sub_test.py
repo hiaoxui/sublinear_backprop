@@ -1,6 +1,6 @@
 import torch
 
-from test.config import cfg
+from test_.config import cfg
 
 torch.manual_seed(9788)
 
@@ -35,29 +35,45 @@ packer = Packer(
 if cfg.cuda:
     packer.cuda()
 
-from test.data_gen import Corpus
+from test_.data_gen import Corpus
 corpus = Corpus()
 
 
 packer.train()
 cnt = 0
 optim = torch.optim.Adam(packer.parameters())
-while True:
-    xs, ys = corpus(cfg.batch_size)
-    xs, ys = torch.tensor(xs, dtype=torch.int64), torch.tensor(ys, dtype=torch.int64)
-    if cfg.cuda:
-        xs, ys = xs.cuda(), ys.cuda()
-    if cnt % 2 == 0:
-        packer.eval()
-        outputs = packer(xs)
-        outputs = outputs.contiguous().view(-1)
-        ys = ys.view(-1)
-        print((outputs == ys).sum().cpu().numpy() / len(outputs))
-        packer.train()
-    else:
+
+import time
+
+xs, ys = corpus(cfg.batch_size)
+xs, ys = torch.tensor(xs, dtype=torch.int64), torch.tensor(ys, dtype=torch.int64)
+if cfg.cuda:
+    xs, ys = xs.cuda(), ys.cuda()
+
+for longest in range(12, -1, -1):
+    longest = 2 ** longest
+    print('longest = {}'.format(longest))
+    packer.step = longest
+
+    packer.eval()
+
+    since = time.clock()
+    for _0 in range(cfg.n_iter * 10):
+        output = packer(xs)
+        if cfg.print_out and _0 == 0:
+            print((ys == output).sum().cpu().numpy())
+    print('time overhead: {:.5f}'.format(time.clock() - since))
+
+    # input('continue?')
+
+    packer.train()
+
+    since = time.clock()
+    for _ in range(cfg.n_iter):
         optim.zero_grad()
         packer(xs, ys)
         optim.step()
 
-    print('-'*25 + str(cnt) + '-'*25)
-    cnt += 1
+    print('time overhead: {:.5f}'.format(time.clock() - since))
+
+    # input('continue?')

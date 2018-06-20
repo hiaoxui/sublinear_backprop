@@ -5,7 +5,7 @@ from .mega_cell import MegaCell
 from .utils import *
 
 
-class Packer(object):
+class Packer(torch.nn.Module):
     """
     Packer is a bad name, but my English is poor.
     Packer could serve as a substitute of torch.nn.Module, but it could only used for RNNs models.
@@ -73,6 +73,8 @@ class Packer(object):
         maximum length of each chunk. The larger of ``longest``, the faster, but the more memory
         will be occupied.
         """
+        super(Packer, self).__init__()
+
         self.multi_hidden = not isinstance(hidden_size, int)
         self.hidden_size = hidden_size
         self.bidirectional = bidirectional
@@ -88,67 +90,23 @@ class Packer(object):
             bidirectional=bidirectional
         )
 
-        self.training = False
-        self.is_cuda = False
-
-    def _init_state(self, batch_size, hidden_size=None):
+    def _init_state(self, batch_size, xs, hidden_size=None):
         """
         Initial state, namely, h0.
         :param int batch_size: Batch size.
+        :param torch.Tensor xs: Input tensor.
         :param int or list[int] hidden_size: The dimension of hidden states.
         :rtype list[torch.Tensor]/torch.Tensor:
         """
         hidden_size = hidden_size or self.hidden_size
+
         if isinstance(hidden_size, int):
-            rst = torch.zeros(size=(batch_size, hidden_size))
-            if self.is_cuda:
-                return rst.cuda()
-            else:
-                return rst
+            return xs.new_zeros(size=(batch_size, hidden_size), dtype=torch.float32)
         else:
             rst = list()
             for hidden_size_ in hidden_size:
-                to_app = torch.zeros(batch_size, hidden_size_)
-                if self.is_cuda:
-                    rst.append(to_app.cuda())
-                else:
-                    rst.append(to_app)
+                rst.append(xs.new_zeros(size=(batch_size, hidden_size_), dtype=torch.float32))
             return rst
-
-    def eval(self):
-        """
-        Turn on the inference mode.
-        """
-        self.training = False
-
-        def helper(module_):
-            if module_ is not None and hasattr(module_, 'eval'):
-                module_.eval()
-
-        for module in [self.mega_cell.upper, self.mega_cell.lower, self.mega_cell.cell_l2r,
-                       self.mega_cell.cell_r2l]:
-            helper(module)
-
-    def train(self):
-        """
-        Turn on the estimation mode.
-        """
-        self.training = True
-
-        def helper(module):
-            if module is not None and hasattr(module, 'train'):
-                module.train()
-
-        helper(self.mega_cell.upper)
-        helper(self.mega_cell.lower)
-        helper(self.mega_cell.cell_l2r)
-        helper(self.mega_cell.cell_r2l)
-
-    def __call__(self, *args):
-        """
-        Following the convention of PyTorch.
-        """
-        return self.forward(*args)
 
     def _inference(self, xs, argmax):
         """
@@ -159,7 +117,7 @@ class Packer(object):
         """
         all_output = list()
         batch_size = xs[0].shape[1]
-        first_state = self._init_state(batch_size)
+        first_state = self._init_state(batch_size, xs[0])
         if self.bidirectional:
             n_chunk = len(xs)
 
@@ -170,7 +128,7 @@ class Packer(object):
                                                      h0_r2l=hidden_state_))
             r2l_tree.forward()
 
-            l2r_state = self._init_state(batch_size)
+            l2r_state = self._init_state(batch_size, xs[0])
             for chunk_idx, r2l_state in enumerate(r2l_tree.backward_generator()):
                 l2r_state, _ = \
                     self.mega_cell.forward(xs[chunk_idx], 0, h0_l2r=l2r_state, h0_r2l=r2l_state)
@@ -195,7 +153,7 @@ class Packer(object):
         :param int seq_len: Length of the sequence.
         """
         batch_size = xs[0].shape[1]
-        first_state = self._init_state(batch_size)
+        first_state = self._init_state(batch_size, xs[0])
         n_chunk = len(xs)
 
         def extract_grad(state):
@@ -248,7 +206,7 @@ class Packer(object):
             # in case of repeated gradients computation of upper layers
             self.mega_cell.zero_upper_grad()
 
-            left_state = self._init_state(batch_size)
+            left_state = self._init_state(batch_size, xs[0])
             left_grad = None
             for chunk_idx, right_state in enumerate(r2l_tree.backward_generator()):
                 if chunk_idx == 0:
@@ -302,31 +260,3 @@ class Packer(object):
                 return output.transpose(1, 0)
             else:
                 return output
-
-    def parameters(self):
-        """
-        Following the convention of PyTorch.
-        """
-
-        def helper(module_):
-            if module_ is not None:
-                yield from module_.parameters()
-
-        for module in [self.mega_cell.lower, self.mega_cell.upper, self.mega_cell.cell_l2r,
-                       self.mega_cell.cell_r2l]:
-            yield from helper(module)
-
-    def cuda(self):
-        """
-        Following the convention of PyTorch.
-        """
-
-        self.is_cuda = True
-
-        def helper(module_):
-            if module_ is not None:
-                module_.cuda()
-
-        for module in [self.mega_cell.lower, self.mega_cell.upper, self.mega_cell.cell_l2r,
-                       self.mega_cell.cell_r2l]:
-            helper(module)

@@ -113,7 +113,6 @@ class BiTree(object):
         :param int idx: Index.
         :param stuff: Content.
         """
-        assert idx not in self.root.active
         assert idx not in self.storage
 
         # Allocate new memory.

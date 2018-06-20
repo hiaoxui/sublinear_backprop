@@ -1,23 +1,19 @@
-# from torch.nn import LSTM
-from test.SemiLSTM import SemiLSTM as LSTM
+from torch.nn import LSTM
+# from test_.HandMadeLSTM import HandMadeLSTM as LSTM
 from torch import nn
-from torch.autograd import Variable
-from test.config import cfg
+import torch
+from test_.config import cfg
 
 
 class OriginalLSTM(nn.Module):
     def __init__(self):
         super(OriginalLSTM, self).__init__()
+
+        torch.manual_seed(9788)
+
         self.encoder = nn.Embedding(
             embedding_dim=cfg.embedding_dim,
             num_embeddings=cfg.voc_size,
-        )
-
-        self.rnn = LSTM(
-            input_size=cfg.embedding_dim,
-            hidden_size=cfg.hidden_dim,
-            batch_first=True,
-            # bidirectional=cfg.bi,
         )
 
         self.fc = nn.Linear(
@@ -25,9 +21,16 @@ class OriginalLSTM(nn.Module):
             out_features=cfg.voc_size,
         )
 
+        self.rnn = LSTM(
+            input_size=cfg.embedding_dim,
+            hidden_size=cfg.hidden_dim,
+            batch_first=True,
+            bidirectional=cfg.bi,
+        )
+
     def forward(self, x):
         """
-        :param Variable x: [batch_size, seq_length]
+        :param torch.Tensor x: [batch_size, seq_length]
         :return:
         """
         code = self.encoder(x)

@@ -3,7 +3,7 @@ import torch
 from .utils import *
 
 
-class MegaCell(object):
+class MegaCell(torch.nn.Module):
     """
     MegaCell is an abstract component for recurrent neural networks (RNNs).
     It contains three torch Modules, a Module that preprocess inputs before sending
@@ -41,6 +41,8 @@ class MegaCell(object):
         Example: For LSTMs, it's True because LSTMs have both hidden states and memory cell.
         Example: For GRUs, it's False since it contains only hidden states.
         """
+        super(MegaCell, self).__init__()
+
         self.upper = upper
         self.lower = lower
 
@@ -97,6 +99,7 @@ class MegaCell(object):
 
         assert h0_r2l is None or self.bidirectional
         assert direction in [-1, 0, 1]
+
         if self.lower is not None:
             time_steps = self.lower(time_steps)
         if direction >= 0:
@@ -175,16 +178,12 @@ class MegaCell(object):
 
         assert direction in [-1, 1]
 
-        retain_grad(self.states_l2r)
-        retain_grad(self.states_r2l)
         if direction == 1:
             detach_tensor_(self.states_r2l)
             backward_helper(self.states_l2r[-1])
         else:
             detach_tensor_(self.states_l2r)
             backward_helper(self.states_r2l[0])
-
-        x = 1
 
     def zero_upper_grad(self):
         """
