@@ -1,6 +1,6 @@
 import torch
 
-from config import cfg
+from test.config import cfg
 
 torch.manual_seed(9788)
 
@@ -35,7 +35,7 @@ packer = Packer(
 if cfg.cuda:
     packer.cuda()
 
-from data_gen import Corpus
+from test.data_gen import Corpus
 corpus = Corpus()
 
 
@@ -47,7 +47,7 @@ while True:
     xs, ys = torch.tensor(xs, dtype=torch.int64), torch.tensor(ys, dtype=torch.int64)
     if cfg.cuda:
         xs, ys = xs.cuda(), ys.cuda()
-    if cnt % 1 == 0:
+    if cnt % 2 == 0:
         packer.eval()
         outputs = packer(xs)
         outputs = outputs.contiguous().view(-1)

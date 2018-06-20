@@ -1,8 +1,8 @@
 # from torch.nn import LSTM
-from SemiLSTM import SemiLSTM as LSTM
+from test.SemiLSTM import SemiLSTM as LSTM
 from torch import nn
 from torch.autograd import Variable
-from config import cfg
+from test.config import cfg
 
 
 class OriginalLSTM(nn.Module):

@@ -1,6 +1,12 @@
 # Sublinear Backpropagation
 
+## Done:
 
-Uni-directional packer is tested!
+* Coding
+* Comments (Hope someone could help me to fix grammar bugs)
+* Test for correctness
 
-There are still some minor bugs in the bi-directional packer. (In estimation)
+## To Do:
+
+* Evaluate the additional computational cost
+* Optimize

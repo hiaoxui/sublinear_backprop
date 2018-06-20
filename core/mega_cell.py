@@ -175,14 +175,16 @@ class MegaCell(object):
 
         assert direction in [-1, 1]
 
-        # retain_grad(self.states_l2r)
-        # retain_grad(self.states_r2l)
+        retain_grad(self.states_l2r)
+        retain_grad(self.states_r2l)
         if direction == 1:
+            detach_tensor_(self.states_r2l)
             backward_helper(self.states_l2r[-1])
         else:
+            detach_tensor_(self.states_l2r)
             backward_helper(self.states_r2l[0])
 
-        # x = 1
+        x = 1
 
     def zero_upper_grad(self):
         """

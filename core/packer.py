@@ -22,8 +22,8 @@ class Packer(object):
     >>> packer = Packer(partial(torch.nn.LSTMCell, 10, 20), torch.nn.Linear(20, 2),
     >>>                 torch.nn.Embedding(30, 10), [20, 20], True, False,
     >>>                 torch.nn.CrossEntropyLoss(), 16)
-    >>> xs = torch.randint(0, 30, size=(17, 4096)) # batch_size = 17
-    >>> ys = torch.randint(0, 2, size=(17, 4096))  # binary classification
+    >>> xs = torch.randint(0, 30, size=(17, 4096), dtype=torch.int64) # batch_size = 17
+    >>> ys = torch.randint(0, 2 , size=(17, 4096), dtype=torch.int64)  # binary classification
     >>> # estimation
     >>> packer.train()
     >>> from torch.optim import Adam
@@ -121,14 +121,13 @@ class Packer(object):
         """
         self.training = False
 
-        def helper(module):
-            if module is not None and hasattr(module, 'eval'):
-                module.eval()
+        def helper(module_):
+            if module_ is not None and hasattr(module_, 'eval'):
+                module_.eval()
 
-        helper(self.mega_cell.upper)
-        helper(self.mega_cell.lower)
-        helper(self.mega_cell.cell_l2r)
-        helper(self.mega_cell.cell_r2l)
+        for module in [self.mega_cell.upper, self.mega_cell.lower, self.mega_cell.cell_l2r,
+                       self.mega_cell.cell_r2l]:
+            helper(module)
 
     def train(self):
         """
@@ -187,7 +186,7 @@ class Packer(object):
                 all_output.append(self.mega_cell.get_output(argmax))
                 self.mega_cell.reset()
         all_output = torch.cat(all_output, dim=0)
-        return all_output
+        return all_output.contiguous()
 
     def _estimate(self, xs, ys, seq_len):
         """
@@ -217,7 +216,7 @@ class Packer(object):
 
         if self.bidirectional:
 
-            def r2l_stepper_gen(h0_l2r_):
+            def gen_r2l_stepper(h0_l2r_):
                 def r2l_stepper(h0_r2l_, time_stamp_):
                     x = xs[n_chunk-time_stamp_-1]
                     state_l2r_, state_r2l_ = self.mega_cell.forward(x, 0, h0_l2r=h0_l2r_,
@@ -237,7 +236,7 @@ class Packer(object):
             for chunk_idx, left_state in enumerate(l2r_tree.backward_generator()):
                 retain_grad(left_state)
                 try:
-                    r2l_gen.send(r2l_stepper_gen(left_state))
+                    r2l_gen.send(gen_r2l_stepper(left_state))
                 except StopIteration:
                     pass
                 time_stamp = n_chunk - 1 - chunk_idx
@@ -257,7 +256,7 @@ class Packer(object):
                 time_stamp = chunk_idx - 1
                 retain_grad(right_state)
                 xs_, ys_ = xs[time_stamp], ys[time_stamp]
-                self.mega_cell.forward(xs_, 0, h0_l2r=left_state, h0_r2l=right_state)
+                left_state, _ = self.mega_cell.forward(xs_, 0, h0_l2r=left_state, h0_r2l=right_state)
                 self.mega_cell.backward(ys_, -1, additional_grad=left_grad,
                                         loss_weight=len(xs_)/seq_len)
                 left_grad = extract_grad(right_state)

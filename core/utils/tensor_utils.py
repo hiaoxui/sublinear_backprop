@@ -12,6 +12,18 @@ def detach_tensor(tensors):
     return tensors.detach()
 
 
+def detach_tensor_(tensors):
+    """
+    Detach tensors inplace.
+    :param list or tuple or torch.Tensor tensors:
+    """
+    if isinstance(tensors, list) or isinstance(tensors, tuple):
+        for tensor in tensors:
+            detach_tensor_(tensor)
+        return
+    tensors.detach_()
+
+
 def retain_grad(tensors):
     """
     Retain gradients.

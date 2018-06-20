@@ -1,8 +1,7 @@
-from data_gen import Corpus
-from config import cfg
+from test.data_gen import Corpus
+from test.config import cfg
 import torch.nn as nn
 from torch import optim
-from torch.autograd import Variable
 import torch
 from tqdm import tqdm
 import numpy as np

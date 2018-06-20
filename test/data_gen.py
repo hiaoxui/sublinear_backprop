@@ -1,4 +1,4 @@
-from config import cfg
+from test.config import cfg
 import numpy as np
 
 

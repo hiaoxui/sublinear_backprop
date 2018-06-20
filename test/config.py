@@ -9,7 +9,7 @@ class Config(object):
         self.repeat_period = 10
         self.voc_size = 25
         self.embedding_dim = 16
-        self.max_step = 128
+        self.max_step = 300
 
         self.seq_length = 1024
 

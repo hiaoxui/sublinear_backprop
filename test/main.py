@@ -1,5 +1,5 @@
-from built_in_lstm import OriginalLSTM
-from trainer import Trainer
+from test.built_in_lstm import OriginalLSTM
+from test.trainer import Trainer
 import time
 
 
