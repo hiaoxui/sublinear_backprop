@@ -19,13 +19,13 @@ def main():
         xs = xs.cuda()
         ys = ys.cuda()
 
-    since = time.clock()
-    tr.evaluate(cfg.n_iter, xs, ys)
-    print(time.clock() - since)
+    since = time.time()
+    tr.evaluate(cfg.n_iter * 10, xs, ys)
+    print(time.time() - since)
 
-    since = time.clock()
+    since = time.time()
     tr.train(cfg.n_iter, xs, ys)
-    print(time.clock() - since)
+    print(time.time() - since)
 
     tr.evaluate(cfg.n_iter, xs, ys)
 

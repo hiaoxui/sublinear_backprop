@@ -4,7 +4,7 @@ import torch
 class Config(object):
     def __init__(self):
         self.hidden_dim = 40
-        self.bi = True
+        self.bi = False
         self.batch_size = 50
         self.repeat_period = 10
         self.voc_size = 25

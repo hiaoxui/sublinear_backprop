@@ -50,30 +50,41 @@ xs, ys = torch.tensor(xs, dtype=torch.int64), torch.tensor(ys, dtype=torch.int64
 if cfg.cuda:
     xs, ys = xs.cuda(), ys.cuda()
 
-for longest in range(12, -1, -1):
-    longest = 2 ** longest
-    print('longest = {}'.format(longest))
-    packer.step = longest
 
+#@profile
+def test_inference():
     packer.eval()
 
-    since = time.clock()
+    since = time.time()
     for _0 in range(cfg.n_iter * 10):
         output = packer(xs)
         if cfg.print_out and _0 == 0:
             print((ys == output).sum().cpu().numpy())
-    print('time overhead: {:.5f}'.format(time.clock() - since))
+    print('time overhead: {:.5f}'.format(time.time() - since))
 
-    # input('continue?')
 
+#@profile
+def test_estimate():
     packer.train()
 
-    since = time.clock()
+    since = time.time()
     for _ in range(cfg.n_iter):
         optim.zero_grad()
         packer(xs, ys)
         optim.step()
 
-    print('time overhead: {:.5f}'.format(time.clock() - since))
+    print('time overhead: {:.5f}'.format(time.time() - since))
 
-    # input('continue?')
+
+def main():
+    for longest in range(12, -1, -1):
+        longest = 2 ** longest
+        print('longest = {}'.format(longest))
+        packer.step = longest
+
+        test_inference()
+        test_estimate()
+
+
+if __name__ == '__main__':
+    main()
