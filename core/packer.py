@@ -128,12 +128,11 @@ class Packer(torch.nn.Module):
                                                      h0_r2l=hidden_state_))
             r2l_tree.forward()
 
-            l2r_state = self._init_state(batch_size, xs[0])
+            l2r_state = first_state
             for chunk_idx, r2l_state in enumerate(r2l_tree.backward_generator()):
                 l2r_state, _ = \
                     self.mega_cell.forward(xs[chunk_idx], 0, h0_l2r=l2r_state, h0_r2l=r2l_state)
                 all_output.append(self.mega_cell.get_output(argmax))
-                self.mega_cell.reset()
 
         else:
             curr_hidden = first_state
@@ -142,7 +141,6 @@ class Packer(torch.nn.Module):
                     xs_chunk,
                     1, h0_l2r=curr_hidden)
                 all_output.append(self.mega_cell.get_output(argmax))
-                self.mega_cell.reset()
         all_output = torch.cat(all_output, dim=0)
         return all_output.contiguous()
 
@@ -201,12 +199,11 @@ class Packer(torch.nn.Module):
                 ys_ = ys[time_stamp]
                 self.mega_cell.backward(ys_, 1, right_grad, loss_weight=len(ys_)/seq_len)
                 right_grad = extract_grad(left_state)
-                self.mega_cell.reset()
 
             # in case of repeated gradients computation of upper layers
             self.mega_cell.zero_upper_grad()
 
-            left_state = self._init_state(batch_size, xs[0])
+            left_state = first_state
             left_grad = None
             for chunk_idx, right_state in enumerate(r2l_tree.backward_generator()):
                 if chunk_idx == 0:
@@ -218,7 +215,6 @@ class Packer(torch.nn.Module):
                 self.mega_cell.backward(ys_, -1, additional_grad=left_grad,
                                         loss_weight=len(xs_)/seq_len)
                 left_grad = extract_grad(right_state)
-                self.mega_cell.reset()
 
         else:
             right_grad = None

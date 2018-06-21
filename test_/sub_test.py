@@ -51,19 +51,19 @@ if cfg.cuda:
     xs, ys = xs.cuda(), ys.cuda()
 
 
-#@profile
+@profile
 def test_inference():
     packer.eval()
 
     since = time.time()
-    for _0 in range(cfg.n_iter * 10):
+    for _0 in range(cfg.n_iter):
         output = packer(xs)
         if cfg.print_out and _0 == 0:
             print((ys == output).sum().cpu().numpy())
     print('time overhead: {:.5f}'.format(time.time() - since))
 
 
-#@profile
+@profile
 def test_estimate():
     packer.train()
 
@@ -77,13 +77,14 @@ def test_estimate():
 
 
 def main():
-    for longest in range(12, -1, -1):
+    for longest in [5]:#range(12, -1, -1):
         longest = 2 ** longest
         print('longest = {}'.format(longest))
         packer.step = longest
 
         test_inference()
         test_estimate()
+        test_inference()
 
 
 if __name__ == '__main__':
